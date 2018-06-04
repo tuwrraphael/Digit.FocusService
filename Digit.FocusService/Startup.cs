@@ -1,8 +1,10 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+﻿using System;
+using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using ButlerClient;
 using Digit.FocusService.Impl;
 using Digit.FocusService.Impl.EF;
+using Digit.FocusService.Options;
 using Digit.FocusService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -11,6 +13,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OAuthApiClient;
+using TravelService.Client;
 
 namespace Digit.FocusService
 {
@@ -78,6 +82,29 @@ namespace Digit.FocusService
                 });
         }
 
+        private void ConfigureCallbacks(IServiceCollection services)
+        {
+            services.Configure<CallbackOptions>(v =>
+            {
+                var rootCallbackUrl = new Uri(Configuration["CallbackUrl"]);
+                v.RefreshDirectionsCallbackUri = new Uri(rootCallbackUrl, new Uri("/api/callback/refreshDirections"));
+            });
+        }
+
+        private void ConfigureHttpClients(IServiceCollection services)
+        {
+            var authenticationProviderBuilder = services.AddBearerTokenAuthenticationProvider("digitServiceToken")
+            .UseMemoryCacheTokenStore()
+            .UseClientCredentialsTokenStrategy(new ClientCredentialsConfig()
+            {
+                ClientId = Configuration["FocusServiceClientId"],
+                ClientSecret = Configuration["FocusServiceClientSecret"],
+                Scopes = "travel.service",
+                ServiceIdentityBaseUrl = new Uri(Configuration["ServiceIdentityUrl"])
+            });
+            services.AddTravelServiceClient(new Uri(Configuration["TravelServiceUrl"]), authenticationProviderBuilder);
+        }
+
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
@@ -86,7 +113,8 @@ namespace Digit.FocusService
             ConfigureAuthorization(services);
             ConfigureCors(services);
             ConfigureDatabase(services);
-
+            ConfigureCallbacks(services);
+            ConfigureHttpClients(services);
             services.Configure<ButlerOptions>(Configuration);
             services.AddTransient<IButler, Butler>();
 
